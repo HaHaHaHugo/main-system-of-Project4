@@ -6,8 +6,7 @@ import time
 import numpy as np
 import cv2
 from pubsub import pub
-# เพิ่ม TOPIC_PID_OUTPUT เข้ามาในการ Import จาก event_bus
-from event_bus import TOPIC_RAW_FRAME, TOPIC_RPM_DATA, TOPIC_CMD_SEND, TOPIC_PID_OUTPUT
+from event_bus import TOPIC_RAW_FRAME, TOPIC_RPM_DATA, TOPIC_RAW_RPM_DATA, TOPIC_CMD_SEND, TOPIC_PID_OUTPUT
 
 PI_IP = '192.168.137.209'
 CMD_PORT = 5000
@@ -18,13 +17,9 @@ class MainNode:
         self.running = True
         self.cmd_socket = None
         
-        # Subscribe ฟังคำสั่งขับเคลื่อนแบบ Manual จาก UI
         pub.subscribe(self.send_command, TOPIC_CMD_SEND)
-        
-        # Subscribe ฟังคำสั่ง PWM ควบคุมมอเตอร์ 4 ล้อ จาก PID Node
         pub.subscribe(self.send_pid_to_hardware, TOPIC_PID_OUTPUT)
 
-        # เริ่ม Thread สำหรับรับส่งข้อมูล Socket
         self.t_cmd = threading.Thread(target=self.cmd_and_rpm_thread, daemon=True)
         self.t_cam = threading.Thread(target=self.video_receive_thread, daemon=True)
         
@@ -58,22 +53,20 @@ class MainNode:
                         
                         if len(parts) == 5:
                             try:
-                                # 1. รับค่า RPM ดิบจากบอร์ด
                                 raw_m1 = float(parts[0])
                                 raw_m2 = float(parts[1])
                                 raw_m3 = float(parts[2])
                                 raw_m4 = float(parts[3])
                                 
                                 rpm_dirs = [1, -1, 1, -1] 
-                                
-                                # 3. นำค่าดิบมาคูณตัวปรับทิศทาง
                                 m1 = raw_m1 * rpm_dirs[0]
                                 m2 = raw_m2 * rpm_dirs[1]
                                 m3 = raw_m3 * rpm_dirs[2]
                                 m4 = raw_m4 * rpm_dirs[3]
                                 
-                                # Publish ค่าที่ถูกปรับทิศทางแล้วไปยัง PID Node และ UI Node
+                                # Publish ทั้งค่าที่ปรับทิศทางแล้ว และค่าดิบ
                                 pub.sendMessage(TOPIC_RPM_DATA, rpm_list=[m1, m2, m3, m4])
+                                pub.sendMessage(TOPIC_RAW_RPM_DATA, raw_rpm_list=[raw_m1, raw_m2, raw_m3, raw_m4])
                             except ValueError:
                                 pass
                 except Exception:
@@ -108,7 +101,6 @@ class MainNode:
 
                 frame = cv2.imdecode(np.frombuffer(frame_data, dtype=np.uint8), cv2.IMREAD_COLOR)
                 if frame is not None:
-                    # Publish ภาพดิบส่งต่อไปยัง Vision Node และ UI Node
                     pub.sendMessage(TOPIC_RAW_FRAME, frame=frame)
 
         except Exception as e:
@@ -124,15 +116,13 @@ class MainNode:
             except Exception as e:
                 print(f"[Node 1 Main Send Error] {e}")
 
-    # ฟังก์ชันใหม่สำหรับรับค่า PID (PWM) แล้วส่งไปยัง Hardware
     def send_pid_to_hardware(self, pwm):
         if self.cmd_socket:
             try:
-                # แปลงค่า [pwm1, pwm2, pwm3, pwm4] เป็น String ส่งเข้า Socket ไปหาบอร์ด
                 cmd_str = f"PWM,{pwm[0]},{pwm[1]},{pwm[2]},{pwm[3]}\n"
                 self.cmd_socket.sendall(cmd_str.encode('utf-8'))
             except Exception as e:
-                print(f"[Node 1 Main PID Send Error] {e}")
+                pass
 
     def stop(self):
         self.running = False

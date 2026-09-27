@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import QApplication
 # Import ทุก Node ให้ตรงตามชื่อไฟล์ใน Explorer เป๊ะๆ
 # --------------------------------------------------
 from n1_main import MainNode
-from n2_vision_node import VisionNode
+from n2_vision import VisionNode
 from n3_PID import PIDNode
 from n4_UI import RobotDashboard
 
